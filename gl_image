@@ -1,0 +1,210 @@
+#!/usr/bin/env python
+
+import os
+import re
+import sys
+import json
+import getopt
+from subprocess import check_call
+from subprocess import check_output
+
+def usage(pname):
+    print "GL.iNet tool"
+    print "Usage: " + pname + " [OPTIONS]"
+    print ""
+    print " -d|--device         The DEVICE variable specific which target device to generate"
+    print " -f|--files          The FILES variable allows custom configuration files to be included in images built with Image Generator"
+    print " -p|--packages       The PACKAGES variable allows to include and/or exclude packages in the firmware image"
+
+class Config:
+    data = {}
+    def __init__(self, filename):
+        self.filename = filename
+        self.__parseConfig()
+
+    def __parseConfig(self):
+        try:
+            with open(self.filename) as fd:
+                self.data = json.load(fd)
+                fd.close()
+        except:
+            print "Failed to parse %s, maybe file missing" % self.filename
+            return 1
+
+    def printConfig(self):
+        print "%s" % self.data
+
+    def getVersion(self):
+        version = "Unknown"
+        if self.data.has_key("version"):
+            version = self.data['version']
+
+        return version
+
+    def getUrl(self):
+        url = "http://download.gl-inet.com/releases"
+        if self.data.has_key("url"):
+            url = self.data['url']
+
+        return url
+
+    def getProfiles(self):
+        profiles = []
+        if self.data.has_key("profiles"):
+            profiles = self.data['profiles']
+
+        return profiles
+
+    def getPackages(self, profile):
+        packages = ""
+        if self.data.has_key("packages") and self.data["packages"].has_key("default"):
+            packages = self.data["packages"]["default"]
+
+        if self.data.has_key("packages") and self.data["packages"].has_key(profile):
+            packages = packages + " " + self.data["packages"][profile]
+
+        return packages
+
+def create_files(dirname, ver, url):
+    if not dirname:
+        print "Not specified directory"
+        return 1
+
+    # Run makefile
+    os.environ["TOPDIR"] = os.getcwd()
+    board = check_output("make -f rules.mk val.BOARD V=s 2>/dev/null", shell=True).strip()
+    # subtarget = check_output("make -f rules.mk val.SUBTARGET V=s 2>/dev/null", shell=True).strip()
+
+    # Remove directory
+    check_output("rm -fr %s" % dirname, shell=True)
+
+    # Create directory
+    check_output("mkdir -p %s" % (dirname + "/etc"), shell=True)
+    check_output("mkdir -p %s" % (dirname + "/etc/opkg"), shell=True)
+
+    if not url or not ver or not board:
+        return 1
+
+    # glinet_core = "%s/%s/%s/%s" % (url, ver, board, subtarget)
+    # glversion
+    check_output("echo %s > %s" % (ver, dirname + "/etc/glversion"), shell=True)
+    # distfeeds
+    '''
+    check_output("echo \"src/gz glinet_core %s\" > %s" % \
+            (glinet_core.rstrip('/'), dirname + "/etc/opkg/distfeeds.conf"), shell=True)
+    '''
+    try:
+        check_output("cat repositories.conf | grep -E \"^src/gz\" >> %s" % \
+                (dirname + "/etc/opkg/distfeeds.conf"), shell=True)
+    except:
+        pass
+
+def merge_files(src_dir, dst_dir):
+    if os.path.isdir(src_dir) and os.path.isdir(dst_dir):
+        check_output("cp -fr %s/* %s/" % (src_dir, dst_dir), shell=True)
+
+repositories_conf = re.sub('[\t ]+', " ", """
+cat << EOF > repositories.conf
+## Place your custom repositories here, they must match the architecture and version.
+# src custom file:///usr/src/openwrt/bin/$board/packages
+
+## Remote package repositories
+src/gz glinet_core $url/$ver/$board/$subtarget
+$(for feed in $feeds; do echo "src/gz glinet_$feed $url/packages-$v.x/$board/$feed"; done)
+
+## This is the local package repository, do not remove!
+src imagebuilder file:packages
+src glinet file:glinet/$board
+EOF
+""").strip()
+
+def update_repo(ver, url):
+    # Major version
+    v = re.sub(r'\D.*$', "", ver)
+
+    # Run makefile
+    os.environ["TOPDIR"] = os.getcwd()
+    board = check_output("make -f rules.mk val.BOARD V=s 2>/dev/null", shell=True).strip()
+    subtarget = check_output("make -f rules.mk val.SUBTARGET V=s 2>/dev/null", shell=True).strip()
+
+    # Extract feeds variable
+    if not os.path.isfile(".config"):
+        return 1
+    feeds = "base " + check_output(r'cat .config | \
+            grep -E "^CONFIG_FEED_" | \
+            sed "s/^CONFIG_FEED_\(.*\)=y/\1/"', shell=True).strip()
+
+    if not v or not url or not board or not subtarget or not feeds:
+        return 1
+
+    # Generate repository conf
+    env = {"v": v, "ver": ver, "url": url, "board": board, "subtarget": subtarget, "feeds": feeds}
+    check_output("/bin/sh -c %s" % repositories_conf, shell=True, env=env)
+
+    return 0
+
+def main(argv):
+    pname = argv[0]
+
+    try:
+        (opts, args) = getopt.getopt(argv[1:], 
+                "hud:f:p:", 
+                [ "help", "update", "device=", "files=", "packages=" ])
+    except getopt.GetoptError as e:
+	usage(pname)
+	return 1
+
+    update = False
+    device = None
+    files = None
+    packages = None
+
+    for (o, v) in opts:
+        if o in ("-h", "--help"):
+            usage(pname)
+            return 0
+        if o in ("-u", "--update"):
+            # Internal variable, use to update repository.conf file
+            update = True
+        if o in ("-d", "--device"):
+            device = v
+        if o in ("-f", "--files"):
+            files = v
+        if o in ("-p", "--packages"):
+            packages = v
+
+    c = Config("images.json")
+
+    if update:
+        # Internal variable, only use to update repository.conf file, will return directly
+        update_repo(c.getVersion(), c.getUrl())
+        return 0
+
+    # Create files
+    dirname = "tmp/files"
+    create_files(dirname, c.getVersion(), c.getUrl())
+
+    if files:
+        merge_files(files.rstrip('/'), dirname)
+
+    # Check command line
+    if device:
+        if device not in c.getProfiles():
+            print "%s not in config, please add it at first" % device
+            return 1
+        else:
+            if packages:
+                check_call("make image PROFILE=%s PACKAGES=\"%s %s\" FILES=%s" % \
+                        (device, c.getPackages(device), packages, dirname), shell=True);
+            else:
+                check_call("make image PROFILE=%s PACKAGES=\"%s\" FILES=%s" % \
+                        (device, c.getPackages(device), dirname), shell=True);
+            return 0
+    else:
+        for profile in c.getProfiles():
+            check_call("make image PROFILE=%s PACKAGES=\"%s\" FILES=%s" % \
+                    (profile, c.getPackages(profile), dirname), shell=True);
+        return 0
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))
