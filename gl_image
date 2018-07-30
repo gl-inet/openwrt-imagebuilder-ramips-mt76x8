@@ -5,6 +5,7 @@ import re
 import sys
 import json
 import getopt
+from subprocess import call
 from subprocess import check_call
 from subprocess import check_output
 
@@ -103,13 +104,59 @@ def merge_files(src_dir, dst_dir):
     if os.path.isdir(src_dir) and os.path.isdir(dst_dir):
         check_output("cp -fr %s/* %s/" % (src_dir, dst_dir), shell=True)
 
+makeIndex = re.sub('[\t\n ]+', ' ', """
+        makeIndex() {
+            local topdir=$PWD;
+            local script_dir=${topdir}/scripts;
+            export PATH="${topdir}/staging_dir/host/bin:${PATH}";
+            if [ -z $PKG_PATH ] || [ ! -d $PKG_PATH ]; then 
+                return 1;
+            fi;
+
+            (
+                cd $PKG_PATH && [ -n "$(find . -maxdepth 1 -name "*.ipk")" ] || exit 1;
+
+                echo "Generating package index..."; 
+
+	        ${script_dir}/ipkg-make-index.sh . 2>&1 > Packages.manifest;
+	        grep -avE '^(Maintainer|LicenseFiles|Source|Require)' Packages.manifest > Packages && \
+                        gzip -9nc Packages > Packages.gz;
+
+                return 1;
+            )
+        }
+""").strip()
+
+def update_glinet():
+    url = "https://github.com/gl-inet/glinet.git"
+    dir_name = "glinet"
+
+    if not os.path.isdir(dir_name):
+        check_call("git clone --depth=1 %s %s" % (url, dir_name), shell=True)
+    else:
+        check_call("git pull", shell=True, cwd=dir_name)
+
+    # Run makefile
+    os.environ["TOPDIR"] = os.getcwd()
+    board = check_output("make -f rules.mk val.BOARD V=s 2>/dev/null", shell=True).strip()
+
+    if not board:
+        return 1
+
+    env = {"PKG_PATH": "glinet/%s" % board}
+    try:
+        call(['/bin/sh', '-c', '%s; if makeIndex; then makeIndex; fi' % makeIndex], env=env)
+    except:
+        print "Failed to update glinet..."
+        return 0
+
 repositories_conf = re.sub('[\t ]+', " ", """
 cat << EOF > repositories.conf
 ## Place your custom repositories here, they must match the architecture and version.
 # src custom file:///usr/src/openwrt/bin/$board/packages
 
 ## Remote package repositories
-src/gz glinet_core $url/$ver/$board/$subtarget
+src/gz glinet_core $url/kmod-$ver/$board/$subtarget
 $(for feed in $feeds; do echo "src/gz glinet_$feed $url/packages-$v.x/$board/$feed"; done)
 
 ## This is the local package repository, do not remove!
@@ -121,6 +168,7 @@ EOF
 def update_repo(ver, url):
     # Major version
     v = re.sub(r'\D.*$', "", ver)
+    m = re.search(r'[\d]+.\d', ver)
 
     # Run makefile
     os.environ["TOPDIR"] = os.getcwd()
@@ -134,11 +182,11 @@ def update_repo(ver, url):
             grep -E "^CONFIG_FEED_" | \
             sed "s/^CONFIG_FEED_\(.*\)=y/\1/"', shell=True).strip()
 
-    if not v or not url or not board or not subtarget or not feeds:
+    if not v or not m or not url or not board or not subtarget or not feeds:
         return 1
 
     # Generate repository conf
-    env = {"v": v, "ver": ver, "url": url, "board": board, "subtarget": subtarget, "feeds": feeds}
+    env = {"v": v, "ver": m.group(), "url": url, "board": board, "subtarget": subtarget, "feeds": feeds}
     check_output("/bin/sh -c %s" % repositories_conf, shell=True, env=env)
 
     return 0
@@ -179,6 +227,8 @@ def main(argv):
         # Internal variable, only use to update repository.conf file, will return directly
         update_repo(c.getVersion(), c.getUrl())
         return 0
+
+    update_glinet()
 
     # Create files
     dirname = "tmp/files"
