@@ -59,7 +59,7 @@ class Config:
     def getPackages(self, profile):
         packages = ""
         if self.data.has_key("packages") and self.data["packages"].has_key("default"):
-            packages = self.data["packages"]["default"]
+            packages = ' '.join(self.data["packages"]["default"].values())
 
         if self.data.has_key("packages") and self.data["packages"].has_key(profile):
             packages = packages + " " + self.data["packages"][profile]
