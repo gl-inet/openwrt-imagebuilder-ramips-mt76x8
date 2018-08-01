@@ -196,12 +196,13 @@ def main(argv):
 
     try:
         (opts, args) = getopt.getopt(argv[1:], 
-                "hud:f:p:", 
-                [ "help", "update", "device=", "files=", "packages=" ])
+                "huid:f:p:", 
+                [ "help", "update", "ignore", "device=", "files=", "packages=" ])
     except getopt.GetoptError as e:
 	usage(pname)
 	return 1
 
+    ignore = False
     update = False
     device = None
     files = None
@@ -214,6 +215,8 @@ def main(argv):
         if o in ("-u", "--update"):
             # Internal variable, use to update repository.conf file
             update = True
+        if o in ("-i", "--ignore"):
+            ignore = True
         if o in ("-d", "--device"):
             device = v
         if o in ("-f", "--files"):
@@ -228,7 +231,8 @@ def main(argv):
         update_repo(c.getVersion(), c.getUrl())
         return 0
 
-    update_glinet()
+    if not ignore:
+        update_glinet()
 
     # Create files
     dirname = "tmp/files"
