@@ -116,6 +116,8 @@ makeIndex = re.sub('[\t\n ]+', ' ', """
             (
                 cd $PKG_PATH && [ -n "$(find . -maxdepth 1 -name "*.ipk")" ] || exit 1;
 
+                [ ! -f "Packages" -o ! -f "Packages.gz" -o "`find . -cnewer Packages.gz`" ] || exit 1;
+
                 echo "Generating package index..."; 
 
 	        ${script_dir}/ipkg-make-index.sh . 2>&1 > Packages.manifest;
