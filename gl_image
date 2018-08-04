@@ -74,7 +74,6 @@ def create_files(dirname, ver, url):
     # Run makefile
     os.environ["TOPDIR"] = os.getcwd()
     board = check_output("make -f rules.mk val.BOARD V=s 2>/dev/null", shell=True).strip()
-    # subtarget = check_output("make -f rules.mk val.SUBTARGET V=s 2>/dev/null", shell=True).strip()
 
     # Remove directory
     check_output("rm -fr %s" % dirname, shell=True)
@@ -83,20 +82,21 @@ def create_files(dirname, ver, url):
     check_output("mkdir -p %s" % (dirname + "/etc"), shell=True)
     check_output("mkdir -p %s" % (dirname + "/etc/opkg"), shell=True)
 
+    major = re.sub(r'\D.*$', "", ver)
+
     if not url or not ver or not board:
         return 1
 
-    # glinet_core = "%s/%s/%s/%s" % (url, ver, board, subtarget)
     # glversion
     check_output("echo %s > %s" % (ver, dirname + "/etc/glversion"), shell=True)
+
     # distfeeds
-    '''
-    check_output("echo \"src/gz glinet_core %s\" > %s" % \
-            (glinet_core.rstrip('/'), dirname + "/etc/opkg/distfeeds.conf"), shell=True)
-    '''
+    glinet_repo = "%s/packages-%s.x/%s/glinet" % (url, major, board)
     try:
-        check_output("cat repositories.conf | grep -E \"^src/gz\" >> %s" % \
+        check_output("cat repositories.conf | grep -E \"^src/gz\" > %s" % \
                 (dirname + "/etc/opkg/distfeeds.conf"), shell=True)
+        check_output("echo \"src/gz glinet_glinet %s\" >> %s" % \
+                (glinet_repo.rstrip('/'), dirname + "/etc/opkg/distfeeds.conf"), shell=True)
     except:
         pass
 
