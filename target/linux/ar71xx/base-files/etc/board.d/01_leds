@@ -66,7 +66,8 @@ cpe830|\
 cpe870|\
 dr531|\
 e600g-v2|\
-e600gac-v2)
+e600gac-v2|\
+e750a-v4)
 	ucidef_set_led_netdev "lan" "LAN" "$board:green:lan" "eth0"
 	ucidef_set_led_netdev "wan" "WAN" "$board:green:wan" "eth1"
 
@@ -89,7 +90,6 @@ e600gac-v2)
 	esac
 	;;
 ap531b0|\
-gl-usb150|\
 sc1750|\
 sc450)
 	ucidef_set_led_wlan "wlan" "WLAN" "$board:green:wlan" "phy0tpt"
@@ -372,6 +372,10 @@ e1700ac-v2)
 	ucidef_set_led_usbdev "usb" "USB" "$board:green:usb" "1-1"
 	ucidef_set_led_wlan "wlan2g" "WLAN2G" "$board:green:wlan2g" "phy1tpt"
 	;;
+e558-v2|\
+e750g-v8)
+	ucidef_set_led_wlan "wlan" "WLAN" "$board:green:wlan" "phy0tpt"
+	;;
 esr900)
 	ucidef_set_led_wlan "wlan2g" "WLAN 2.4 GHz" "engenius:blue:wlan-2g" "phy0tpt"
 	ucidef_set_led_wlan "wlan5g" "WLAN 5 GHz" "engenius:blue:wlan-5g" "phy1tpt"
@@ -389,6 +393,10 @@ fritz4020)
 fritz450e)
 	ucidef_set_led_netdev "lan" "LAN" "$board:green:lan" "eth0"
 	ucidef_set_led_wlan "wlan" "WLAN" "$board:green:wlan" "phy0tpt"
+	;;
+gl-usb150)
+	ucidef_set_led_wlan "wlan" "WLAN" "$board:green:wlan" "phy0tpt"
+	ucidef_set_led_default "power" "POWER" "$board:green:power" "1"
 	;;
 gl-ar300m)
 	ucidef_set_led_wlan "wlan" "WLAN" "$board:red:wlan" "phy0tpt"
